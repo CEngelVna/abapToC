@@ -6,15 +6,15 @@
 REPORT ztoc.
 
 " -----------------------------------------------------------------------
-TABLES: e070, e07t.
+TABLES e070.
 
 SELECTION-SCREEN BEGIN OF BLOCK b01 WITH FRAME TITLE TEXT-b01.
   SELECT-OPTIONS so_trnum FOR e070-trkorr. " Transport numbers
-  SELECT-OPTIONS so_owner FOR e070-as4user default sy-uname. " Transport owners
-  SELECT-OPTIONS so_descr for e07t-as4text.
+  SELECT-OPTIONS so_owner FOR e070-as4user DEFAULT sy-uname. " Transport owners
+  SELECT-OPTIONS so_date FOR e070-as4date. " Transport Date
+  PARAMETERS p_client TYPE trclient DEFAULT sy-mandt.
   PARAMETERS p_reltr AS CHECKBOX. " Include released transports
   PARAMETERS p_tocs AS CHECKBOX. " Include ToCs
-  PARAMETERS p_sub AS CHECKBOX. " Include subtransports
 SELECTION-SCREEN END OF BLOCK b01.
 
 SELECTION-SCREEN BEGIN OF BLOCK b02 WITH FRAME TITLE TEXT-b02.
@@ -27,8 +27,13 @@ INITIALIZATION.
 
   " -----------------------------------------------------------------------
 START-OF-SELECTION.
-  report->gather_transports( tranports = so_trnum[] owners = so_owner[] descriptions = so_descr[]
-                             include_released = p_reltr include_tocs = p_tocs include_subtransports = p_sub ).
+  WRITE space.
+  report->gather_transports( tranports        = so_trnum[]
+                             owners           = so_owner[]
+                             include_released = p_reltr
+                             include_tocs     = p_tocs
+                             dates            = so_Date[]
+                             client = p_client ).
   report->display( p_layout ).
 
   " -----------------------------------------------------------------------

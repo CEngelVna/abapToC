@@ -14,7 +14,16 @@
     <S_WIN32>X</S_WIN32>
     <S_PLATIN>X</S_PLATIN>
    </TSTCC>
+   <TSTCT>
+    <SPRSL>E</SPRSL>
+    <TCODE>ZTOC</TCODE>
+    <TTEXT>Transport of Copies</TTEXT>
+   </TSTCT>
    <I18N_TPOOL>
+    <TSTCT>
+     <SPRSL>D</SPRSL>
+     <TTEXT>Transport von Kopien</TTEXT>
+    </TSTCT>
     <TSTCT>
      <SPRSL>L</SPRSL>
      <TTEXT>Transport of Copies</TTEXT>
