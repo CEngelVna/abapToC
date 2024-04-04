@@ -111,7 +111,6 @@ CLASS zcl_zabap_toc IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD import_objects.
-    " TODO: variable is assigned but never used (ABAP cleaner)
     DATA request_headers     TYPE trwbo_request_headers.
     DATA check_summary       TYPE trcheckresext_tab.
     DATA slin_res            TYPE REF TO cl_ci_transport_check.
@@ -137,48 +136,56 @@ CLASS zcl_zabap_toc IMPLEMENTATION.
                                      with = 'TR_READ_REQUEST_WITH_TASKS' ).
     ENDIF.
 
-    TRY.
-        DATA(cts_api) = cl_cts_rest_api_factory=>create_instance( ).
-        cts_api->check_objects_and_keys( EXPORTING iv_trkorr        = source_transport
-                                         IMPORTING et_check_summary = check_summary " Object Checks: Result (with Check ID)
-                                                   eo_slin_res      = slin_res
-                                                   et_docu_res      = docu_res      " Results of Documentation Check
-                                                   et_pack_res      = pack_res      " Table with Messages from the Package Check for Dict. Objects
-                                                   et_gtabkey_res   = gtabkey_res ). " Error Messages After Global Key Check
+    DATA(request_header) = request_headers[ trkorr = source_transport ].
 
-        CALL FUNCTION 'TR_GET_OBJ_INSPECTION_RESULTS'
-          IMPORTING et_summary     = check_summary
-                    eo_slin_res    = slin_res
-                    et_docu_res    = docu_res
-                    et_pack_res    = pack_res
-                    et_gtabkey_res = gtabkey_res
-                    eo_atc_res     = atc_res.
+    IF request_header-trstatus = 'D'.
+      TRY.
+          DATA(cts_api) = cl_cts_rest_api_factory=>create_instance( ).
+          cts_api->check_objects_and_keys( EXPORTING iv_trkorr        = source_transport
+                                           IMPORTING et_check_summary = check_summary " Object Checks: Result (with Check ID)
+                                                     eo_slin_res      = slin_res
+                                                     et_docu_res      = docu_res      " Results of Documentation Check
+                                                     et_pack_res      = pack_res      " Table with Messages from the Package Check for Dict. Objects
+                                                     et_gtabkey_res   = gtabkey_res ). " Error Messages After Global Key Check
 
-        LOOP AT check_summary TRANSPORTING NO FIELDS WHERE errors > 0.
-          EXIT.
-        ENDLOOP.
-        IF sy-subrc = 0.
+          CALL FUNCTION 'TR_GET_OBJ_INSPECTION_RESULTS'
+            IMPORTING et_summary     = check_summary
+                      eo_slin_res    = slin_res
+                      et_docu_res    = docu_res
+                      et_pack_res    = pack_res
+                      et_gtabkey_res = gtabkey_res
+                      eo_atc_res     = atc_res.
 
-          CALL FUNCTION 'TR_DISP_OBJ_INSPECTION_RESULTS'
-            EXPORTING it_summary          = check_summary
-                      io_slin_res         = slin_res
-                      io_atc_res          = atc_res
-                      it_docu_res         = docu_res
-                      it_pack_res         = pack_res
-                      it_gtabkey_res      = gtabkey_res
-            IMPORTING ev_canceled_by_user = ev_canceled_by_user.
+          LOOP AT check_summary TRANSPORTING NO FIELDS WHERE errors > 0.
+            EXIT.
+          ENDLOOP.
+          IF sy-subrc = 0.
 
+            CALL FUNCTION 'TR_DISP_OBJ_INSPECTION_RESULTS'
+              EXPORTING it_summary          = check_summary
+                        io_slin_res         = slin_res
+                        io_atc_res          = atc_res
+                        it_docu_res         = docu_res
+                        it_pack_res         = pack_res
+                        it_gtabkey_res      = gtabkey_res
+              IMPORTING ev_canceled_by_user = ev_canceled_by_user.
+
+            RAISE EXCEPTION TYPE zcx_zabap_exception
+              EXPORTING message = |Request: { source_transport } has errors.|.
+          ENDIF.
+          cts_api->release( iv_trkorr       = source_transport
+                            iv_ignore_locks = abap_true ).
+
+          cts_api->add_new_task( iv_trkorr     = request_header-strkorr
+                                 iv_task_owner = request_header-as4user ).
+        CATCH cx_root INTO DATA(cx).
           RAISE EXCEPTION TYPE zcx_zabap_exception
-            EXPORTING message = |Request: { source_transport } has errors.|.
-        ENDIF.
-        cts_api->release( iv_trkorr       = source_transport
-                          iv_ignore_locks = abap_true ).
-      CATCH cx_root INTO DATA(cx).
-        RAISE EXCEPTION TYPE zcx_zabap_exception
-          EXPORTING message = replace( val  = TEXT-e02
-                                       sub  = '&1'
-                                       with = cx->get_text( ) ).
-    ENDTRY.
+            EXPORTING message = replace( val  = TEXT-e02
+                                         sub  = '&1'
+                                         with = cx->get_text( ) ).
+      ENDTRY.
+    ENDIF.
+
     CALL FUNCTION 'TR_COPY_COMM'
       EXPORTING  wi_dialog                = abap_false
                  wi_trkorr_from           = source_transport

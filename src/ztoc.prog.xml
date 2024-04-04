@@ -44,6 +44,12 @@
     </item>
     <item>
      <ID>S</ID>
+     <KEY>P_PAR</KEY>
+     <ENTRY>Include Parent Transports</ENTRY>
+     <LENGTH>33</LENGTH>
+    </item>
+    <item>
+     <ID>S</ID>
      <KEY>P_RELTR</KEY>
      <ENTRY>Include released transports</ENTRY>
      <LENGTH>35</LENGTH>
@@ -96,6 +102,12 @@
        <ID>R</ID>
        <ENTRY>Transport von Kopien</ENTRY>
        <LENGTH>70</LENGTH>
+      </item>
+      <item>
+       <ID>S</ID>
+       <KEY>P_PAR</KEY>
+       <ENTRY>Inkl. Kopf Aufträge</ENTRY>
+       <LENGTH>38</LENGTH>
       </item>
       <item>
        <ID>S</ID>

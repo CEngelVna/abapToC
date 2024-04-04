@@ -12,7 +12,8 @@ CLASS zcl_zabap_toc_report DEFINITION PUBLIC FINAL CREATE PUBLIC.
                                         include_released TYPE abap_bool             DEFAULT abap_true
                                         include_tocs     TYPE abap_bool             DEFAULT abap_false
                                         dates            TYPE tt_range_of_date      OPTIONAL
-                                        client TYPE trclient DEFAULT sy-mandt.
+                                        !client          TYPE trclient              DEFAULT sy-mandt
+                                         include_parent TYPE any OPTIONAL.
 
     METHODS display                      IMPORTING layout_name   TYPE slis_vari OPTIONAL.
     METHODS get_layout_from_f4_selection RETURNING VALUE(layout) TYPE slis_vari.
@@ -20,6 +21,7 @@ CLASS zcl_zabap_toc_report DEFINITION PUBLIC FINAL CREATE PUBLIC.
   PRIVATE SECTION.
     TYPES t_icon TYPE c LENGTH 4.
     TYPES: BEGIN OF t_report,
+             parent_transport          TYPE strkorr,
              transport                 TYPE trkorr,
              client                    TYPE trclient,
              type                      TYPE trfunction,
@@ -53,18 +55,19 @@ CLASS zcl_zabap_toc_report DEFINITION PUBLIC FINAL CREATE PUBLIC.
                END OF c_status_color.
     CONSTANTS c_status_check_interval_sec TYPE i VALUE 5.
 
-    DATA timer         TYPE REF TO cl_gui_timer.
-    DATA alv_table     TYPE REF TO cl_salv_table.
-    DATA toc_manager   TYPE REF TO zcl_zabap_toc.
-    DATA layout_key    TYPE salv_s_layout_key.
-    DATA report_data   TYPE tt_report.
-    DATA tocs_to_check TYPE HASHED TABLE OF trkorr WITH UNIQUE KEY table_line.
-    DATA: m_tranports TYPE tt_range_of_transport,
-          m_owners TYPE tt_range_of_owner,
-          m_include_released TYPE abap_bool,
-          m_include_tocs TYPE abap_bool,
-          m_dates TYPE tt_range_of_date,
-          m_client TYPE trclient.
+    DATA timer              TYPE REF TO cl_gui_timer.
+    DATA alv_table          TYPE REF TO cl_salv_table.
+    DATA toc_manager        TYPE REF TO zcl_zabap_toc.
+    DATA layout_key         TYPE salv_s_layout_key.
+    DATA report_data        TYPE tt_report.
+    DATA tocs_to_check      TYPE HASHED TABLE OF trkorr WITH UNIQUE KEY table_line.
+    DATA m_tranports        TYPE tt_range_of_transport.
+    DATA m_owners           TYPE tt_range_of_owner.
+    DATA m_include_released TYPE abap_bool.
+    DATA m_include_tocs     TYPE abap_bool.
+    DATA m_dates            TYPE tt_range_of_date.
+    DATA m_client           TYPE trclient.
+    DATA m_include_parent TYPE abap_bool.
 
     METHODS set_column_hotspot_icon IMPORTING !column TYPE lvc_fname.
 
@@ -85,6 +88,9 @@ CLASS zcl_zabap_toc_report DEFINITION PUBLIC FINAL CREATE PUBLIC.
 
     METHODS on_user_command FOR EVENT added_function OF cl_salv_events
       IMPORTING e_salv_function.
+
+    METHODS on_double_click FOR EVENT double_click OF cl_salv_events_table        IMPORTING !row !column.
+    METHODS show_transport_details IMPORTING transport TYPE trkorr.
 ENDCLASS.
 
 
@@ -98,39 +104,44 @@ CLASS zcl_zabap_toc_report IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD gather_transports.
-
-
-          m_tranports = tranports.
-          m_owners = owners.
-          m_include_released = include_released.
-          m_include_tocs = include_tocs.
-          m_client = client.
-          m_dates = dates.
+    m_tranports = tranports.
+    m_owners = owners.
+    m_include_released = include_released.
+    m_include_tocs = include_tocs.
+    m_client = client.
+    m_dates = dates.
+    m_include_parent = include_parent.
 
     SELECT
       FROM e070
-             INNER JOIN
+             LEFT JOIN
                e070 AS parent ON parent~trkorr = e070~strkorr
                  LEFT JOIN
                    e07t ON e07t~trkorr = e070~trkorr
                      LEFT OUTER JOIN
                        e070c ON e070c~trkorr = e070~trkorr
-      FIELDS e070~trkorr                   AS transport,
-             e070c~client                  AS client,
-             e070~trfunction               AS type,
-             parent~tarsystem              AS target_system,
-             e070~as4user                  AS owner,
-             e070~as4date                  AS creation_date,
-             e07t~as4text                  AS description,
-             @c_icon-create                AS create_toc,
-             @c_icon-create_release        AS create_release_toc,
-             @c_icon-create_release_import AS create_release_import_toc
+      FIELDS e070~strkorr                    AS parent_transport,
+             e070~trkorr                     AS transport,
+             e070c~client                    AS client,
+             e070~trfunction                 AS type,
+             CASE WHEN parent~trkorr IS NULL
+                THEN e070~tarsystem
+                ELSE parent~tarsystem
+             END                             AS target_system,
+             e070~as4user                    AS owner,
+             e070~as4date                    AS creation_date,
+             e07t~as4text                    AS description,
+             @c_icon-create                  AS create_toc,
+             @c_icon-create_release          AS create_release_toc,
+             @c_icon-create_release_import   AS create_release_import_toc
       WHERE ( e070~trkorr IN @m_tranports OR e070~strkorr IN @m_tranports )
-        AND e070~as4user IN @m_owners AND e070~strkorr <> @space
+        AND e070~as4user IN @m_owners
+        AND ( @m_include_parent   = @abap_true OR e070~strkorr    <> @space )
         AND ( @m_include_released = @abap_true OR e070~trstatus   IN ( 'L', 'D' ) )
         AND ( @m_include_tocs     = @abap_true OR e070~trfunction <> 'T' )
         AND e070~as4date IN @m_dates
         AND e070c~client  = @m_client
+        AND e070~trkorr  IN ( SELECT trkorr FROM e071 WHERE trkorr = e070~trkorr )
       ORDER BY e070~trkorr DESCENDING,
                e070~as4date DESCENDING
       INTO CORRESPONDING FIELDS OF TABLE @report_data.
@@ -150,7 +161,7 @@ CLASS zcl_zabap_toc_report IMPLEMENTATION.
 
     TRY.
         CASE column.
-            "--------------------------------------------------
+          "--------------------------------------------------
           WHEN c_toc_columns-create_toc.
             IF selected->toc_number IS INITIAL.
               selected->toc_number = toc_manager->create( source_transport = selected->transport
@@ -160,7 +171,7 @@ CLASS zcl_zabap_toc_report IMPLEMENTATION.
             set_status_color( row   = row
                               color = c_status_color-green ).
 
-            "--------------------------------------------------
+          "--------------------------------------------------
           WHEN c_toc_columns-create_release_toc.
             IF selected->toc_number IS INITIAL.
               selected->toc_number = toc_manager->create( source_transport = selected->transport
@@ -171,7 +182,7 @@ CLASS zcl_zabap_toc_report IMPLEMENTATION.
             set_status_color( row   = row
                               color = c_status_color-green ).
 
-            "--------------------------------------------------
+          "--------------------------------------------------
           WHEN c_toc_columns-create_release_import_toc.
             IF selected->toc_number IS INITIAL.
               selected->toc_number = toc_manager->create( source_transport = selected->transport
@@ -190,7 +201,7 @@ CLASS zcl_zabap_toc_report IMPLEMENTATION.
                                               WHEN rc = 4 THEN c_status_color-yellow
                                               ELSE             c_status_color-red ) ).
 
-            "--------------------------------------------------
+          "--------------------------------------------------
           WHEN OTHERS.
         ENDCASE.
 
@@ -254,6 +265,7 @@ CLASS zcl_zabap_toc_report IMPLEMENTATION.
     DATA(event) = alv_table->get_event( ).
     SET HANDLER me->on_link_click FOR event.
     SET HANDLER me->on_user_command FOR event.
+    SET HANDLER me->on_double_click FOR event.
 
     " Set layouts
     alv_table->get_layout( )->set_key( layout_key ).
@@ -444,4 +456,31 @@ CLASS zcl_zabap_toc_report IMPLEMENTATION.
     alv_table->refresh( refresh_mode = if_salv_c_refresh=>full ).
   ENDMETHOD.
 
+  METHOD show_transport_details.
+    DATA batch_input TYPE TABLE OF bdcdata.
+
+    APPEND VALUE #( program  = 'RDDM0001'
+                    dynpro   = '0200'
+                    dynbegin = 'X'
+                    fnam     = 'BDC_CURSOR'
+                    fval     = 'TRDYSE01SN-TR_TRKORR'  ) TO batch_input.
+    APPEND VALUE #( fnam = 'TRDYSE01SN-TR_TRKORR'
+                    fval = transport ) TO batch_input.
+    APPEND VALUE #( fnam = 'BDC_OKCODE'
+                    fval = '=SINGLE_REQUEST' ) TO batch_input.
+
+    CALL TRANSACTION 'SE01' USING batch_input MODE 'E' UPDATE 'S'.
+  ENDMETHOD.
+
+  METHOD on_double_click.
+    DATA(selected) = REF #( report_data[ row ] ).
+
+    CASE column.
+      WHEN 'TRANSPORT'.
+        show_transport_details( selected->transport ).
+
+      WHEN OTHERS.
+
+    ENDCASE.
+  ENDMETHOD.
 ENDCLASS.

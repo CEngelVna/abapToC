@@ -15,6 +15,7 @@ SELECTION-SCREEN BEGIN OF BLOCK b01 WITH FRAME TITLE TEXT-b01.
   PARAMETERS p_client TYPE trclient DEFAULT sy-mandt.
   PARAMETERS p_reltr AS CHECKBOX. " Include released transports
   PARAMETERS p_tocs AS CHECKBOX. " Include ToCs
+  PARAMETERS p_par AS CHECKBOX. " Include Parents
 SELECTION-SCREEN END OF BLOCK b01.
 
 SELECTION-SCREEN BEGIN OF BLOCK b02 WITH FRAME TITLE TEXT-b02.
@@ -32,6 +33,7 @@ START-OF-SELECTION.
                              owners           = so_owner[]
                              include_released = p_reltr
                              include_tocs     = p_tocs
+                             include_parent   = p_par
                              dates            = so_Date[]
                              client = p_client ).
   report->display( p_layout ).
